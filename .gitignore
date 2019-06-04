@@ -1,0 +1,9 @@
+# Vert.x
+/src/main/generated/**
+
+# Maven
+/target/**
+
+# IntelliJ IDEA
+/.idea/**
+*.iml
