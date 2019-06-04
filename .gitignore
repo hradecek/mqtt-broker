@@ -1,0 +1,10 @@
+# Vert.x
+/src/main/generated/**
+/src/main/asciidoc/**
+
+# Maven
+/target/**
+
+# IntelliJ IDEA
+/.idea/**
+*.iml
