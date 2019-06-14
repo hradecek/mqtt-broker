@@ -17,6 +17,11 @@ import io.vertx.mqtt.messages.MqttPublishMessage;
 public interface RedisService {
 
     /**
+     * Default service address.
+     */
+    String ADDRESS ="redis.queue";
+
+    /**
      * TODO
      *
      * @param clientId

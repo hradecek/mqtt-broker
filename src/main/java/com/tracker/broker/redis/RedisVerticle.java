@@ -20,11 +20,6 @@ public class RedisVerticle extends AbstractVerticle {
      */
     private static final String CONFIG_REDIS_PATH = "redis/config.json";
 
-    /**
-     * Default service address.
-     */
-    public static final String CONFIG_REDIS_QUEUE ="redis.queue";
-
     @Override
     public Completable rxStart() {
         return new JsonConfigReader<>(vertx, RedisConfig.class)
@@ -44,7 +39,7 @@ public class RedisVerticle extends AbstractVerticle {
         return Completable.fromAction(() ->
             RedisService.create(config, result -> {
                 if (result.succeeded()) {
-                    new ServiceBinder(vertx.getDelegate()).setAddress(CONFIG_REDIS_QUEUE)
+                    new ServiceBinder(vertx.getDelegate()).setAddress(RedisService.ADDRESS)
                                                           .register(RedisService.class, result.result());
                 } else {
                     LOGGER.error("Cannot create redis service.");

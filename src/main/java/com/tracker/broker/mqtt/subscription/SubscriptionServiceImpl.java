@@ -1,20 +1,16 @@
-package com.tracker.broker.mqtt;
+package com.tracker.broker.mqtt.subscription;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.reactivex.mqtt.MqttTopicSubscription;
-import io.vertx.reactivex.mqtt.messages.MqttSubscribeMessage;
-import io.vertx.reactivex.mqtt.messages.MqttUnsubscribeMessage;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * TODO
@@ -25,12 +21,16 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     private final Map<String, JsonArray> subscriptions = new HashMap<>();
 
-    @Override
-    public SubscriptionService addSubscriptions(JsonObject subscription, Handler<AsyncResult<Void>> resultHandler) {
-        LOGGER.info("addSubscriptions " + subscription);
+    private final Vertx vertx;
 
-        final String clientId = subscription.getString("clientId");
-        final JsonArray topics = subscription.getJsonArray("topics");
+    public SubscriptionServiceImpl(Vertx vertx) {
+        this.vertx = vertx;
+    }
+
+    @Override
+    public SubscriptionService addSubscriptions(String clientId, JsonArray topics, Handler<AsyncResult<Void>> resultHandler) {
+        LOGGER.info("addSubscriptions " + topics);
+
         if (subscriptions.containsKey(clientId)) {
             subscriptions.get(clientId).addAll(topics);
         } else {
@@ -48,6 +48,13 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     public SubscriptionService publishUpdates(JsonObject updates, Handler<AsyncResult<Void>> resultHandler) {
+//        for (Map.Entry<String, JsonArray> subscription : subscriptions.entrySet()) {
+//            String clientId = subscription.getKey();
+//            for (int i = 0; i < subscription.getValue().size(); ++i) {
+        vertx.eventBus().publish("subscriptions-changes", updates);
+//            }
+//        }
+
         return this;
     }
 

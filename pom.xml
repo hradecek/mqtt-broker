@@ -101,12 +101,6 @@
         <version>${version.exec.maven.plugin}</version>
         <configuration>
           <mainClass>io.vertx.core.Launcher</mainClass>
-          <!--<systemProperties>-->
-            <!--<systemProperty>-->
-              <!--<key>hsqldb.reconfig_logging</key>-->
-              <!--<value>false</value>-->
-            <!--</systemProperty>-->
-          <!--</systemProperties>-->
           <arguments>
             <argument>run</argument>
             <argument>${main.verticle}</argument>
@@ -152,6 +146,11 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-service-proxy</artifactId>
+      <version>${version.vertx}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-service-discovery</artifactId>
       <version>${version.vertx}</version>
     </dependency>
   </dependencies>

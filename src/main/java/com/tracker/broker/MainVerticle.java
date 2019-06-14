@@ -1,6 +1,8 @@
 package com.tracker.broker;
 
 import com.tracker.broker.mqtt.MqttServerVerticle;
+import com.tracker.broker.mqtt.client.ClientEndpointVerticle;
+import com.tracker.broker.mqtt.subscription.SubscriptionsVerticle;
 import com.tracker.broker.redis.RedisVerticle;
 import io.reactivex.Completable;
 import io.vertx.core.Verticle;
@@ -15,7 +17,10 @@ public class MainVerticle extends AbstractVerticle {
 
     @Override
     public Completable rxStart() {
-        return deployVerticle(new RedisVerticle()).andThen(deployVerticle(new MqttServerVerticle()));
+        return deployVerticle(new RedisVerticle())
+                .andThen(deployVerticle(new SubscriptionsVerticle()))
+                .andThen(deployVerticle(new ClientEndpointVerticle()))
+                .andThen(deployVerticle(new MqttServerVerticle()));
     }
 
     private Completable deployVerticle(Verticle verticle) {
