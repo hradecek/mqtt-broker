@@ -25,8 +25,16 @@ public class RedisServiceImpl implements RedisService {
     /**
      * TODO
      */
+    // $SYS
+    private static final String BROKER_LOAD_BYTES_RECEIVED = "broker:load:bytes:received";
+
+    private static final String BROKER_MESSAGES_RECEIVED = "broker:messages:received";
+
+    private static final String BROKER_LOAD_BYTES_SENT = "broker:load:bytes:sent";
     private static final String BROKER_CLIENTS_CONNECTED = "broker:clients:connected";
     private static final String BROKER_CLIENTS_DISCONNECTED = "broker:clients:disconnected";
+    private static final String BROKER_CLIENTS_MAXIMUM = "broker:clients:maximum";
+
     private static final String SUBSCRIPTIONS_CLIENTS = "subscriptions:";
 
     private static final String CLIENTS_COORDINATES = "coordinates";
@@ -40,8 +48,7 @@ public class RedisServiceImpl implements RedisService {
      * @param config
      * @param readyHandler
      */
-    RedisServiceImpl(RedisConfig config,
-                     Handler<AsyncResult<RedisService>> readyHandler) {
+    RedisServiceImpl(RedisConfig config, Handler<AsyncResult<RedisService>> readyHandler) {
         Redis.createClient(Vertx.vertx(),
                            new RedisOptions().setEndpoint(SocketAddress.inetSocketAddress(config.getPort(), config.getHost())))
              .connect(result -> {
@@ -59,12 +66,26 @@ public class RedisServiceImpl implements RedisService {
     public RedisService addClient(String clientId, Handler<AsyncResult<Void>> resultHandler) {
         client.sadd(Arrays.asList(BROKER_CLIENTS_CONNECTED, clientId), result -> {
             if (result.succeeded()) {
-                if (result.result().toInteger() == 0) {
+                if (result.result().toInteger() != 0) {
                     LOGGER.info("Added new client: " + clientId);
                 }
                 resultHandler.handle(Future.succeededFuture());
             } else {
                 LOGGER.error("Cannot add new client: " + clientId);
+                resultHandler.handle(Future.failedFuture(result.cause()));
+            }
+        });
+
+        return this;
+    }
+
+    @Override
+    public RedisService getClientsConnected(Handler<AsyncResult<Integer>> resultHandler) {
+        client.get(BROKER_CLIENTS_CONNECTED, result -> {
+            if (result.succeeded()) {
+                resultHandler.handle(Future.succeededFuture(result.result().toInteger()));
+            } else {
+                // TODO
                 resultHandler.handle(Future.failedFuture(result.cause()));
             }
         });
@@ -100,6 +121,40 @@ public class RedisServiceImpl implements RedisService {
             } else {
                 LOGGER.error("Cannot remove client: " + clientId);
                 resultHandler.handle(Future.failedFuture(result.cause()));
+            }
+        });
+
+        return this;
+    }
+
+    @Override
+    public RedisService receivedMessage(int bytes, Handler<AsyncResult<Void>> resultHandler) {
+        client.multi(multiResult -> {
+            if (multiResult.succeeded()) {
+                client.incr(BROKER_MESSAGES_RECEIVED, result1 -> {
+                    if (result1.succeeded()) {
+                        client.incrby(BROKER_LOAD_BYTES_RECEIVED, String.valueOf(bytes), result2 -> {
+                            if (result2.succeeded()) {
+                                client.exec(execResult -> {
+                                    if (execResult.succeeded()) {
+                                        resultHandler.handle(Future.succeededFuture());
+                                    } else {
+                                        client.discard(discardResult -> { });
+                                        resultHandler.handle(Future.failedFuture(execResult.cause()));
+                                    }
+                                });
+                            } else {
+                                client.discard(discardResult -> { });
+                                resultHandler.handle(Future.failedFuture(result2.cause()));
+                            }
+                        });
+                    } else {
+                        client.discard(discardResult -> { });
+                        resultHandler.handle(Future.failedFuture(result1.cause()));
+                    }
+                });
+            } else {
+                resultHandler.handle(Future.failedFuture(multiResult.cause()));
             }
         });
 

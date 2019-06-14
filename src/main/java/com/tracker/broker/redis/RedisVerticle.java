@@ -1,11 +1,11 @@
 package com.tracker.broker.redis;
 
+import com.tracker.broker.config.JsonConfigReader;
+
 import io.reactivex.Completable;
-import io.reactivex.Single;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.reactivex.core.AbstractVerticle;
-import io.vertx.reactivex.core.buffer.Buffer;
 import io.vertx.serviceproxy.ServiceBinder;
 
 /**
@@ -27,8 +27,11 @@ public class RedisVerticle extends AbstractVerticle {
 
     @Override
     public Completable rxStart() {
-        return readConfig().flatMapCompletable(this::registerService)
-                           .doOnComplete(() -> LOGGER.info("Started " + RedisVerticle.class.getSimpleName()));
+        return new JsonConfigReader<>(vertx, RedisConfig.class)
+                .read(CONFIG_REDIS_PATH)
+                .doOnError(ex -> LOGGER.error("Cannot read configuration " + CONFIG_REDIS_PATH, ex))
+                .flatMapCompletable(this::registerService)
+                .doOnComplete(() -> LOGGER.info("Started " + RedisVerticle.class.getSimpleName()));
     }
 
     /**
@@ -48,21 +51,5 @@ public class RedisVerticle extends AbstractVerticle {
                 }
             })
         );
-    }
-
-    /**
-     * Read json configuration.
-     *
-     * @return redis configuration
-     */
-    private Single<RedisConfig> readConfig() {
-        return vertx.fileSystem()
-                    .rxReadFile(CONFIG_REDIS_PATH)
-                    .map(RedisVerticle::bufferToRedisConfig)
-                    .doOnError(ex -> LOGGER.error("Cannot read redis configuration " + CONFIG_REDIS_PATH, ex));
-    }
-
-    private static RedisConfig bufferToRedisConfig(final Buffer buffer) {
-        return buffer.toJsonObject().mapTo(RedisConfig.class);
     }
 }

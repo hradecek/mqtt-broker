@@ -3,18 +3,18 @@ package com.tracker.broker.config;
 import io.reactivex.Single;
 
 /**
- * TODO
+ * Reads configuration file and returns POJO representation.
  *
- * @param <T>
+ * @param <T> type of POJO
  */
 @FunctionalInterface
 public interface ConfigReader<T> {
 
     /**
-     * TODO
+     * Read configuration file.
      *
-     * @param configPath
-     * @return
+     * @param configPath path to configuration ile
+     * @return Single representing configuration
      */
     Single<T> read(final String configPath);
 }

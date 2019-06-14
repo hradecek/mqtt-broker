@@ -7,6 +7,7 @@ import io.vertx.codegen.annotations.VertxGen;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.mqtt.messages.MqttPublishMessage;
 
 /**
  * TODO
@@ -43,6 +44,12 @@ public interface RedisService {
      */
     @Fluent
     RedisService remClient(final String clientId, Handler<AsyncResult<Void>> resultHandler);
+
+    @Fluent
+    RedisService receivedMessage(int bytes, Handler<AsyncResult<Void>> resultHandler);
+
+    @Fluent
+    RedisService getClientsConnected(Handler<AsyncResult<Integer>> resultHandler);
 
     /**
      * TODO

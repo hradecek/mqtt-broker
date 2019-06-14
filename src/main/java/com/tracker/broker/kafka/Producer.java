@@ -1,6 +1,5 @@
 package com.tracker.broker.kafka;
 
-import com.tracker.broker.config.KafkaConfig;
 import io.reactivex.Single;
 import io.vertx.kafka.client.producer.RecordMetadata;
 import io.vertx.reactivex.core.Vertx;

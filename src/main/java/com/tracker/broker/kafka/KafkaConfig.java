@@ -1,4 +1,4 @@
-package com.tracker.broker.config;
+package com.tracker.broker.kafka;
 
 public class KafkaConfig {
 

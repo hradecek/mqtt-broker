@@ -16,15 +16,18 @@ public class PublishHandler implements Handler<MqttPublishMessage> {
     private static final Logger LOGGER = LoggerFactory.getLogger(PublishHandler.class);
 
     private final String clientId;
+    private final RedisService redis;
     private final Map<String, Topic> topics = new HashMap<>();
 
     public PublishHandler(RedisService redis, String clientId) {
         this.clientId = clientId;
+        this.redis = redis;
         topics.put(TOPIC_COORDINATES, new CoordinatesTopic(redis));
     }
 
     @Override
     public void handle(final MqttPublishMessage message) {
+        redis.rxReceivedMessage(message.getDelegate().payload().getBytes().length).subscribe();
         if (topics.containsKey(message.topicName())) {
             topics.get(message.topicName()).process(clientId, message);
         } else {

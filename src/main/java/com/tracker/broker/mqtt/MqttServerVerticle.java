@@ -1,18 +1,20 @@
 package com.tracker.broker.mqtt;
 
-import com.tracker.broker.redis.reactivex.RedisService;
+import com.tracker.broker.config.JsonConfigReader;
+import com.tracker.broker.mqtt.reactivex.ClientService;
+import com.tracker.broker.mqtt.reactivex.SubscriptionService;
 import io.reactivex.Completable;
 import io.reactivex.Single;
 import io.vertx.core.Handler;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.mqtt.MqttServerOptions;
 import io.vertx.reactivex.core.AbstractVerticle;
-import io.vertx.reactivex.core.buffer.Buffer;
 import io.vertx.reactivex.mqtt.MqttEndpoint;
 import io.vertx.reactivex.mqtt.MqttServer;
-
-import static com.tracker.broker.redis.RedisVerticle.CONFIG_REDIS_QUEUE;
+import io.vertx.reactivex.mqtt.MqttTopicSubscription;
 
 /**
  * MQTT server verticle is responsible for starting MQTT Broker server instance and handles client <=> broker
@@ -26,68 +28,63 @@ public class MqttServerVerticle extends AbstractVerticle {
 
     @Override
     public Completable rxStart() {
-        return readConfig().flatMap(this::createMqttServer)
+        return new JsonConfigReader<>(vertx, BrokerConfig.class)
+                .read(CONFIG_BROKER_PATH)
+                .doOnError(ex -> LOGGER.error("Cannot read MQTT broker configuration " + CONFIG_BROKER_PATH, ex))
+                .flatMap(this::createMqttServer)
                 .ignoreElement()
-                .doOnComplete(() -> LOGGER.info("Started " + MqttServerOptions.class.getSimpleName()));
+                .doOnComplete(() -> LOGGER.info("Started " + MqttServerOptions.class.getSimpleName()))
+                .andThen(vertx.rxDeployVerticle(new ServicesVerticle()))
+                .ignoreElement();
     }
 
     private Single<MqttServer> createMqttServer(final BrokerConfig config) {
-        final String redisSysTopicQueue = config().getString(CONFIG_REDIS_QUEUE, CONFIG_REDIS_QUEUE);
-        final RedisService redisService = com.tracker.broker.redis.RedisService.createProxy(vertx.getDelegate(), redisSysTopicQueue);
+        final SubscriptionService subscriptions = com.tracker.broker.mqtt.SubscriptionService.createProxy(vertx.getDelegate(), SubscriptionService.ADDRESS);
+        final ClientService client = com.tracker.broker.mqtt.ClientService.createProxy(vertx.getDelegate(), ClientService.ADDRESS);
 
-        final MqttServer mqttServer = MqttServer.create(vertx, new MqttServerOptions().setHost(config.getHost()).setPort(config.getPort()));
-        mqttServer.endpointHandler(new ClientEndpoint(redisService));
-
-        return mqttServer.rxListen()
-                .doOnSuccess(ms -> LOGGER.info(String.format("MQTT Server is listening on %d", ms.actualPort())))
-                .doOnError(ex -> LOGGER.error("Cannot start MQTT server", ex));
+        return MqttServer.create(vertx, new MqttServerOptions().setHost(config.getHost()).setPort(config.getPort()))
+                         .endpointHandler(new ClientEndpoint(subscriptions, client))
+                         .rxListen()
+                         .doOnSuccess(ms -> LOGGER.info(String.format("MQTT Server is listening on %d", ms.actualPort())))
+                         .doOnError(ex -> LOGGER.error("Cannot start MQTT server", ex));
     }
 
     public static class ClientEndpoint implements Handler<MqttEndpoint> {
+
         private static final Logger LOGGER = LoggerFactory.getLogger(ClientEndpoint.class);
 
-        private final RedisService redis;
+        private SubscriptionService subscriptions;
+        private ClientService clients;
 
-        public ClientEndpoint(RedisService redis) {
-            this.redis = redis;
+        public ClientEndpoint(SubscriptionService subscriptions, ClientService clients) {
+            this.subscriptions = subscriptions;
+            this.clients = clients;
         }
 
-        @Override
         public void handle(final MqttEndpoint endpoint) {
-            // Used custom ID instead of endpoint ID - might be duplicated
             LOGGER.info("Connected: " + endpoint.clientIdentifier());
-            redis.rxAddClient(endpoint.clientIdentifier()).subscribe();
-            final Subscription subscription = new Subscription(redis, endpoint);
+            final JsonObject connection = new JsonObject().put("clientId", endpoint.clientIdentifier());
+            clients.rxConnectClient(connection).subscribe().dispose();
+            endpoint
+                    .publishHandler(message -> LOGGER.info("Publish: " + message.topicName() + " " + message.payload().toJsonObject()))
+//                    .subscribeHandler(message -> LOGGER.info("Subscribe: " + message.topicSubscriptions()))
+                    .subscribeHandler(message -> {
+                        final JsonArray topics = new JsonArray();
+                        for (MqttTopicSubscription subscription : message.topicSubscriptions()) {
+                            topics.add(new JsonObject().put("topic", subscription.topicName())
+                                    .put("qos", subscription.qualityOfService()));
+                        }
+                        final JsonObject json =
+                                new JsonObject().put("clientId", endpoint.clientIdentifier())
+                                        .put("topic", topics);
 
-            endpoint.publishHandler(new PublishHandler(redis, endpoint.clientIdentifier()))
-                    .subscribeHandler(subscription::subscribeHandler)
-                    .unsubscribeHandler(subscription::unsubscribeHandler)
-                    // .exceptionHandler() TODO: Dump all you can
-                    .closeHandler(__ -> close(endpoint))
-                    .disconnectHandler(__ -> disconnect(endpoint))
+                        subscriptions.rxAddSubscriptions(json).subscribe().dispose();
+                            })
+                    .unsubscribeHandler(message -> LOGGER.info("Unsubscribe: " + message.topics()))
+                    .exceptionHandler(e -> LOGGER.error(e.getMessage())) // TODO: Dump all you can
+                    .closeHandler(__ -> LOGGER.info("Closed: " + endpoint.clientIdentifier()))
+                    .disconnectHandler(__ -> LOGGER.info("Disconnected: " + endpoint.clientIdentifier()))
                     .accept();
         }
-
-        private void close(final MqttEndpoint endpoint) {
-            LOGGER.info("Closed: " + endpoint.clientIdentifier());
-            redis.rxRemClient(endpoint.clientIdentifier())
-                 .subscribe();
-        }
-
-        private void disconnect(final MqttEndpoint endpoint) {
-            LOGGER.info("Disconnected: " + endpoint.clientIdentifier());
-            redis.rxRemClient(endpoint.clientIdentifier()).subscribe();
-        }
-    }
-
-    private Single<BrokerConfig> readConfig() {
-        return vertx.fileSystem()
-                .rxReadFile(CONFIG_BROKER_PATH)
-                .map(MqttServerVerticle::bufferToBrokerConfig)
-                .doOnError(ex -> LOGGER.error("Cannot read MQTT broker configuration " + CONFIG_BROKER_PATH, ex));
-    }
-
-    private static BrokerConfig bufferToBrokerConfig(final Buffer buffer) {
-        return buffer.toJsonObject().mapTo(BrokerConfig.class);
     }
 }
