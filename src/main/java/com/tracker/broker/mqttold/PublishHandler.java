@@ -26,7 +26,7 @@ public class PublishHandler { //implements Handler<MqttPublishMessage> {
 //    }
 //
 //    @Override
-//    public void handle(final MqttPublishMessage message) {
+//    public void subscribe(final MqttPublishMessage message) {
 //        redis.rxReceivedMessage(message.getDelegate().payload().getBytes().length).subscribe();
 //        if (topics.containsKey(message.topicName())) {
 //            topics.get(message.topicName()).process(clientId, message);

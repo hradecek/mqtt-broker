@@ -2,12 +2,11 @@ package com.tracker.broker.mqtt;
 
 import com.tracker.broker.config.JsonConfigReader;
 import com.tracker.broker.mqtt.client.reactivex.ClientService;
+import com.tracker.broker.mqtt.subscription.Subscription;
 import com.tracker.broker.mqtt.subscription.reactivex.SubscriptionService;
-import com.tracker.broker.mqttold.BrokerConfig;
 import io.reactivex.Completable;
 import io.reactivex.Single;
 import io.vertx.core.Handler;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -15,9 +14,16 @@ import io.vertx.mqtt.MqttServerOptions;
 import io.vertx.reactivex.core.AbstractVerticle;
 import io.vertx.reactivex.mqtt.MqttEndpoint;
 import io.vertx.reactivex.mqtt.MqttServer;
+import io.vertx.reactivex.mqtt.MqttTopicSubscription;
+import io.vertx.reactivex.mqtt.messages.MqttSubscribeMessage;
+import io.vertx.reactivex.mqtt.messages.MqttUnsubscribeMessage;
 import io.vertx.reactivex.servicediscovery.ServiceDiscovery;
 import io.vertx.servicediscovery.ServiceDiscoveryOptions;
 import io.vertx.servicediscovery.types.MessageSource;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * MQTT server verticle is responsible for starting MQTT Broker server instance and handles client <=> broker
@@ -68,7 +74,7 @@ public class MqttServerVerticle extends AbstractVerticle {
         private final ClientService client;
         private final SubscriptionService subscriptions;
 
-        public ClientEndpoint(ServiceDiscovery discovery, ClientService client, SubscriptionService subscriptions) {
+        ClientEndpoint(ServiceDiscovery discovery, ClientService client, SubscriptionService subscriptions) {
             this.discovery = discovery;
             this.client = client;
             this.subscriptions = subscriptions;
@@ -94,23 +100,67 @@ public class MqttServerVerticle extends AbstractVerticle {
                     }
             );
 
-            endpoint
-//                    .subscribeHandler(message -> LOGGER.info("Subscribe: " + message.topicSubscriptions()))
-                    .subscribeHandler(message ->
-                            // TODO create helper to serialize this to JSON
-                            subscriptions.rxAddSubscriptions(endpoint.clientIdentifier(), new JsonArray().add(new JsonObject().put("topicName", message.topicSubscriptions().get(0).topicName())))
-                            .subscribe())
+            SubscriptionHandler subscription = new SubscriptionHandler(endpoint.clientIdentifier(), subscriptions);
+
+            endpoint.subscribeHandler(subscription::subscribe)
+                    .unsubscribeHandler(subscription::unsubscribe)
 //                    .publishHandler(message -> LOGGER.info("Publish: " + message.topicName() + " " + message.payload().toJsonObject()))
                     .publishHandler(message -> {
                         client.rxPublish(endpoint.clientIdentifier(), message.topicName(), message.payload().toJsonObject()).subscribe().dispose();
                     })
-                    .unsubscribeHandler(message -> LOGGER.info("Unsubscribe: " + message.topics()))
                     .exceptionHandler(e -> LOGGER.error(e.getMessage())) // TODO: Dump all you can
                     .closeHandler(__ -> LOGGER.info("Closed: " + endpoint.clientIdentifier()))
                     // TODO When disconnecting remove message consumer for subscriptions created above
                     // TODO Remove Subscriptions
                     .disconnectHandler(__ -> LOGGER.info("Disconnected: " + endpoint.clientIdentifier()))
                     .accept();
+        }
+
+//        private static class PublishHandler {
+//
+//            private final String clientId;
+//
+//            PublishHandler(String clientId, Publish subscriptions) {
+//                this.clientId = clientId;
+//                this.subscriptions = subscriptions;
+//            }
+//            void publish(MqttPublishMessage publishMessage) {
+//
+//            }
+//        }
+
+        private static class SubscriptionHandler {
+
+            private final String clientId;
+            private final SubscriptionService subscriptions;
+
+            SubscriptionHandler(String clientId, SubscriptionService subscriptions) {
+                this.clientId = clientId;
+                this.subscriptions = subscriptions;
+            }
+
+            void subscribe(MqttSubscribeMessage subscribeMessage) {
+                subscriptions.rxAddSubscriptions(clientId, subscribeMessageToSet(subscribeMessage))
+                             .subscribe()
+                             .dispose();
+            }
+
+            private static Set<Subscription> subscribeMessageToSet(MqttSubscribeMessage message) {
+                return message.topicSubscriptions()
+                              .stream()
+                              .map(SubscriptionHandler::toSubscription)
+                              .collect(Collectors.toSet());
+            }
+
+            private static Subscription toSubscription(MqttTopicSubscription topicSubscription) {
+                return new Subscription(topicSubscription.qualityOfService().value(), topicSubscription.topicName());
+            }
+
+            void unsubscribe(MqttUnsubscribeMessage unsubscribeMessage) {
+                subscriptions.rxRemoveSubscriptions(clientId, new HashSet<>(unsubscribeMessage.topics()))
+                             .subscribe()
+                             .dispose();
+            }
         }
     }
 }

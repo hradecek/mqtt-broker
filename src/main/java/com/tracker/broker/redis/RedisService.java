@@ -1,5 +1,6 @@
 package com.tracker.broker.redis;
 
+import com.tracker.broker.mqtt.subscription.Subscription;
 import io.vertx.codegen.annotations.Fluent;
 import io.vertx.codegen.annotations.GenIgnore;
 import io.vertx.codegen.annotations.ProxyGen;
@@ -8,6 +9,8 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.mqtt.messages.MqttPublishMessage;
+
+import java.util.Set;
 
 /**
  * TODO
@@ -20,6 +23,30 @@ public interface RedisService {
      * Default service address.
      */
     String ADDRESS ="redis.queue";
+
+    /**
+     * Static factory method for instance creation.
+     *
+     * @param config redis configuration
+     * @param readyHandler async result
+     * @return RedisService
+     */
+    @GenIgnore
+    static RedisService create(RedisConfig config, Handler<AsyncResult<RedisService>> readyHandler) {
+        return new RedisServiceImpl(config, readyHandler);
+    }
+
+    /**
+     * Static factory method for event bus service proxy creation.
+     *
+     * @param vertx Vert.x instance
+     * @param address service event-bus address
+     * @return Rx-fied subscription service proxy
+     */
+    @GenIgnore
+    static com.tracker.broker.redis.reactivex.RedisService createProxy(Vertx vertx, String address) {
+        return new com.tracker.broker.redis.reactivex.RedisService(new RedisServiceVertxEBProxy(vertx, address));
+    }
 
     /**
      * TODO
@@ -66,21 +93,30 @@ public interface RedisService {
      * @return
      */
     @Fluent
-    RedisService addCoordinates(final String clientId, double lat, double lng ,Handler<AsyncResult<Void>> resultHandler);
+    RedisService addCoordinates(String clientId, double lat, double lng ,Handler<AsyncResult<Void>> resultHandler);
 
+    /**
+     * Add specified topic subscription with QoS level.
+     *
+     * @param clientId client's ID, that subscription will be added
+     * @param topicsName topics' names of subscriptions, that will be added
+     * @param resultHandler async result
+     * @return RedisService
+     */
     @Fluent
-    RedisService addSubscription(String clientId, String topicName, Handler<AsyncResult<Void>> resultHandler);
+    RedisService addSubscriptions(String clientId, Set<Subscription> topicsName, Handler<AsyncResult<Void>> resultHandler);
 
+    /**
+     * Remove specified topic subscriptions for specified client.
+     *
+     * <p>Only subscriptions, that exists are removed meaning if client wants to unsubscribe from topic it was not
+     * subscribe to, nothing will happen.
+     *
+     * @param clientId client's ID, that subscriptions of will be removed
+     * @param topicsName topics' names of subscriptions, that will be removed
+     * @param resultHandler async result
+     * @return RedisService
+     */
     @Fluent
-    RedisService removeSubscription(String clientId, String topicName, Handler<AsyncResult<Void>> resultHandler);
-
-    @GenIgnore
-    static RedisService create(RedisConfig config, Handler<AsyncResult<RedisService>> readyHandler) {
-        return new RedisServiceImpl(config, readyHandler);
-    }
-
-    @GenIgnore
-    static com.tracker.broker.redis.reactivex.RedisService createProxy(Vertx vertx, String address) {
-        return new com.tracker.broker.redis.reactivex.RedisService(new RedisServiceVertxEBProxy(vertx, address));
-    }
+    RedisService removeSubscriptions(String clientId, Set<String> topicsName, Handler<AsyncResult<Void>> resultHandler);
 }

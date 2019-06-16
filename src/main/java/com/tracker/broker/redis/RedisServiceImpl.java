@@ -1,9 +1,12 @@
 package com.tracker.broker.redis;
 
+import com.tracker.broker.mqtt.subscription.Subscription;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -12,8 +15,13 @@ import io.vertx.redis.client.Redis;
 import io.vertx.redis.client.RedisAPI;
 import io.vertx.redis.client.RedisOptions;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * TODO
@@ -180,11 +188,12 @@ public class RedisServiceImpl implements RedisService {
     }
 
     @Override
-    public RedisService addSubscription(final String clientId, final String topicName, Handler<AsyncResult<Void>> resultHandler) {
-        client.sadd(Arrays.asList(String.format("subscriptions:%s:topics", clientId), topicName), result -> {
+    public RedisService addSubscriptions(String clientId, Set<Subscription> subscriptions, Handler<AsyncResult<Void>> resultHandler) {
+        client.sadd(subscriptionsArgs(clientId, subscriptions), result -> {
             if (result.succeeded()) {
                 resultHandler.handle(Future.succeededFuture());
             } else {
+                LOGGER.error(String.format("Cannot add subscriptions: %s for client %s", subscriptions, clientId));
                 resultHandler.handle(Future.failedFuture(result.cause()));
             }
         });
@@ -192,16 +201,61 @@ public class RedisServiceImpl implements RedisService {
         return this;
     }
 
+    private static List<String> subscriptionsArgs(String clientId, Set<Subscription> subscriptions) {
+        List<String> args = new ArrayList<>();
+        args.add(subscriptionsTopicsKey(clientId));
+        args.addAll(subscriptionsToList(subscriptions));
+
+        return args;
+    }
+
+    private static List<String> subscriptionsToList(Set<Subscription> subscriptions) {
+        return subscriptions.stream()
+                            .map(subscription -> subscription.toJson().toString())
+                            .collect(Collectors.toList());
+    }
+
     @Override
-    public RedisService removeSubscription(final String clientId, final String topicName, Handler<AsyncResult<Void>> resultHandler) {
-        client.srem(Arrays.asList(String.format("subscriptions:%s:topics", clientId), topicName), result -> {
+    public RedisService removeSubscriptions(String clientId, Set<String> topicsName, Handler<AsyncResult<Void>> resultHandler) {
+        String key = subscriptionsTopicsKey(clientId);
+        client.smembers(key, result -> {
             if (result.succeeded()) {
-                resultHandler.handle(Future.succeededFuture());
+                List<String> args = new ArrayList<>();
+                args.add(key);
+                args.addAll(unsubscriptions(topicsName, subscriptionsFromJsonArray(new JsonArray(result.result().toString()))));
+                client.srem(args, remResult -> {
+                    if (remResult.succeeded()) {
+                        resultHandler.handle(Future.succeededFuture());
+                    } else {
+                        LOGGER.error(String.format("Cannot unsubscribe from: %s for client %s", topicsName, clientId));
+                        resultHandler.handle(Future.failedFuture(remResult.cause()));
+                    }
+                });
             } else {
+                LOGGER.error(String.format("Cannot get members of %s", key));
                 resultHandler.handle(Future.failedFuture(result.cause()));
             }
         });
 
         return this;
+    }
+
+    private static List<String> unsubscriptions(Set<String> unsubscriptions, List<Subscription> subscriptions) {
+        return subscriptions.stream()
+                            .filter(subscription -> unsubscriptions.contains(subscription.getTopicName()))
+                            .map(Subscription::toJson)
+                            .map(JsonObject::toString)
+                            .collect(Collectors.toList());
+    }
+
+    private static List<Subscription> subscriptionsFromJsonArray(JsonArray jsonArray) {
+        return jsonArray.stream()
+                        .map(subscription -> new Subscription((JsonObject) subscription))
+                        .collect(Collectors.toList());
+    }
+
+    // TODO Create redis utils for creating topic "string"
+    private static String subscriptionsTopicsKey(String clientId) {
+        return String.format("subscriptions:%s:topics", clientId);
     }
 }

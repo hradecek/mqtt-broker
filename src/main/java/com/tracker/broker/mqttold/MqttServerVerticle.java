@@ -63,7 +63,7 @@ public class MqttServerVerticle extends AbstractVerticle {
 //            this.clients = clients;
 //        }
 //
-//        public void handle(final MqttEndpoint endpoint) {
+//        public void subscribe(final MqttEndpoint endpoint) {
 //            LOGGER.info("Connected: " + endpoint.clientIdentifier());
 //            final JsonObject connection = new JsonObject().put("clientId", endpoint.clientIdentifier());
 //            clients.rxConnectClient(connection).subscribe().dispose();

@@ -1,4 +1,4 @@
-package com.tracker.broker.mqttold;
+package com.tracker.broker.mqtt;
 
 import io.vertx.mqtt.MqttServerOptions;
 
