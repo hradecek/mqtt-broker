@@ -1,12 +1,20 @@
 package com.tracker.broker;
 
 import com.tracker.broker.mqtt.MqttServerVerticle;
-import com.tracker.broker.mqtt.client.ClientEndpointVerticle;
 import com.tracker.broker.mqtt.subscription.SubscriptionsVerticle;
-import com.tracker.broker.redis.RedisVerticle;
+import com.tracker.broker.redis.RedisServiceHelper;
+import com.tracker.broker.mqtt.topics.TopicsVerticle;
+
 import io.reactivex.Completable;
 import io.vertx.core.Verticle;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 import io.vertx.reactivex.core.AbstractVerticle;
+import io.vertx.reactivex.servicediscovery.ServiceDiscovery;
+import io.vertx.servicediscovery.ServiceDiscoveryOptions;
+
+import java.util.ArrayList;
+import java.util.Collection;
 
 /**
  * Main application verticle.
@@ -15,15 +23,32 @@ import io.vertx.reactivex.core.AbstractVerticle;
  */
 public class MainVerticle extends AbstractVerticle {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(MainVerticle.class);
+
+    /**
+     * All verticles registered by main verticle (in order).
+     */
+    // TODO: Can be moved to configuration file
+    private static final Collection<Verticle> verticles = new ArrayList<Verticle>() {{
+        add(new TopicsVerticle());
+        add(new SubscriptionsVerticle());
+        add(new MqttServerVerticle());
+    }};
+
     @Override
     public Completable rxStart() {
-        return deployVerticle(new RedisVerticle())
-                .andThen(deployVerticle(new SubscriptionsVerticle()))
-                .andThen(deployVerticle(new ClientEndpointVerticle()))
-                .andThen(deployVerticle(new MqttServerVerticle()));
+        ServiceDiscovery discovery = ServiceDiscovery.create(vertx, new ServiceDiscoveryOptions().setBackendConfiguration(config()));
+        return RedisServiceHelper.registerRedis(vertx, discovery).andThen(deployVerticles());
+    }
+
+    private Completable deployVerticles() {
+        return verticles.stream().map(this::deployVerticle).reduce(Completable.complete(), Completable::andThen);
     }
 
     private Completable deployVerticle(Verticle verticle) {
-        return vertx.rxDeployVerticle(verticle).ignoreElement();
+        return vertx.rxDeployVerticle(verticle)
+                     .doOnError(ex -> LOGGER.error(String.format("Cannot deploy verticle: %s", verticle.getClass().getName())))
+                     .doOnSuccess(id -> LOGGER.info(String.format("Deployed verticle: %s - %s", verticle.getClass().getName(), id)))
+                     .ignoreElement();
     }
 }

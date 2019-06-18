@@ -40,4 +40,9 @@ public class RedisConfig {
             this.port = port;
         }
     }
+
+    @Override
+    public String toString() {
+        return String.format("RedisConfig{host=\"%s\", port=%d}", getHost(), getPort());
+    }
 }

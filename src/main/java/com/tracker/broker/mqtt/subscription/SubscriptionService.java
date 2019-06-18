@@ -1,7 +1,5 @@
 package com.tracker.broker.mqtt.subscription;
 
-import com.tracker.broker.redis.reactivex.RedisService;
-
 import io.vertx.codegen.annotations.Fluent;
 import io.vertx.codegen.annotations.GenIgnore;
 import io.vertx.codegen.annotations.ProxyGen;
@@ -9,12 +7,12 @@ import io.vertx.codegen.annotations.VertxGen;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonObject;
+import io.vertx.reactivex.servicediscovery.ServiceDiscovery;
 
 import java.util.Set;
 
 /**
- * TODO
+ * Subscription service handles all subscription based MQTT request.
  */
 @ProxyGen
 @VertxGen
@@ -23,18 +21,18 @@ public interface SubscriptionService {
     /**
      * Service's default event bus address.
      */
-    String ADDRESS = "subscription.queue";
+    String ADDRESS ="service.mqtt.subscription";
 
     /**
      * Static factory method.
      *
-     * @param vertx
-     * @param redis
-     * @return
+     * @param discovery service discovery instance
+     * @param readyHandler async result
+     * @return SubscriptionService
      */
     @GenIgnore
-    static SubscriptionService create(Vertx vertx, RedisService redis) {
-        return new SubscriptionServiceImpl(vertx, redis);
+    static SubscriptionService create(ServiceDiscovery discovery, Handler<AsyncResult<SubscriptionService>> readyHandler) {
+        return new SubscriptionServiceImpl(discovery, readyHandler);
     }
 
     /**
@@ -70,14 +68,14 @@ public interface SubscriptionService {
      */
     @Fluent
     SubscriptionService removeSubscriptions(String clientId, Set<String> topicNames, Handler<AsyncResult<Void>> resultHandler);
-
-    /**
-     * TODO
-     *
-     * @param updates
-     * @param resultHandler
-     * @return
-     */
-    @Fluent
-    SubscriptionService publishUpdates(final JsonObject updates, Handler<AsyncResult<Void>> resultHandler);
+//
+//    /**
+//     * TODO
+//     *
+//     * @param updates
+//     * @param resultHandler
+//     * @return
+//     */
+//    @Fluent
+//    SubscriptionService publishUpdates(final JsonObject updates, Handler<AsyncResult<Void>> resultHandler);
 }

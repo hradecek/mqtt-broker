@@ -1,4 +1,4 @@
-package com.tracker.broker.mqtt.subscription;
+package com.tracker.broker.mqtt.publish;
 
 import io.vertx.codegen.annotations.DataObject;
 import io.vertx.core.json.JsonObject;
@@ -6,22 +6,17 @@ import io.vertx.core.json.JsonObject;
 import java.util.Objects;
 
 /**
- * Data object representing subscription request.
- *
- * <p>Subscription request consists of:
- * <ul>
- *     <li>QoS - Quality of service represented by integer (0, 1, 2)
- *     <li>Topic name - name of the topic to be subscribe to
- * </ul>
+ * Data object representing publish message.
  */
 @DataObject(generateConverter = true, publicConverter = false)
-public class Subscription {
+public class PublishMessage {
 
     /**
      * Represents JSON object structure - keys definition.
      */
     public enum JsonKeys {
         QOS("qos"),
+        PAYLOAD("payload"),
         TOPIC_NAME("topicName");
 
         final String keyName;
@@ -47,44 +42,42 @@ public class Subscription {
 
     private final int qos;
     private final String topicName;
+    private final JsonObject payload;
 
     /**
      * Default constructor, using default values.
      */
-    public Subscription() {
+    public PublishMessage() {
         this.qos = DEFAULT_QOS;
+        this.payload = new JsonObject();
         this.topicName = DEFAULT_TOPIC_NAME;
     }
 
-    /**
-     * Constructor.
-     *
-     * @param qos QoS level (0, 1, 2)
-     * @param topicName topic's name
-     */
-    public Subscription(int qos, String topicName) {
-        // TODO validate QoS level or Enum
+    public PublishMessage(int qos, String topicName, JsonObject payload) {
         this.qos = qos;
-        this.topicName = topicName;
+        this.payload = new JsonObject();
+        this.topicName = DEFAULT_TOPIC_NAME;
     }
 
     /**
      * Copy constructor.
      *
-     * @param other subscription's copy
+     * @param other publish message's copy
      */
-    public Subscription(Subscription other) {
+    public PublishMessage(PublishMessage other) {
         this.qos = other.qos;
+        this.payload = new JsonObject(other.payload.toBuffer());
         this.topicName = other.topicName;
     }
 
     /**
      * Copy constructor from JSON object, used especially for event bus (de)serialization.
      *
-     * @param jsonObject subscription JSON object representation
+     * @param jsonObject publish message's JSON object representation
      */
-    public Subscription(JsonObject jsonObject) {
+    public PublishMessage(JsonObject jsonObject) {
         this.qos = jsonObject.getInteger(JsonKeys.QOS.keyName);
+        this.payload = jsonObject.getJsonObject(JsonKeys.PAYLOAD.keyName);
         this.topicName = jsonObject.getString(JsonKeys.TOPIC_NAME.keyName);
     }
 
@@ -95,48 +88,43 @@ public class Subscription {
      */
     public JsonObject toJson() {
         return new JsonObject().put(JsonKeys.QOS.keyName, qos)
-                               .put(JsonKeys.TOPIC_NAME.keyName, topicName);
+                               .put(JsonKeys.TOPIC_NAME.keyName, topicName)
+                               .put(JsonKeys.PAYLOAD.keyName, payload);
     }
 
-    /**
-     * Getter for QoS.
-     *
-     * @return QoS level
-     */
     public int getQos() {
         return qos;
     }
 
-    /**
-     * Getter for topic name.
-     *
-     * @return topic's name
-     */
     public String getTopicName() {
         return topicName;
     }
 
+    public JsonObject getPayload() {
+        return payload;
+    }
+
+    public int getByteSize() {
+        return Integer.SIZE + topicName.length() + payload.toBuffer().length();
+    }
+
     @Override
-    public boolean equals(Object other) {
-        if (this == other) {
-            return true;
-        }
-
-        if (!(other instanceof Subscription)) {
-            return false;
-        }
-
-        Subscription that = (Subscription) other;
-        return qos == that.qos && topicName.equals(that.topicName);
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof PublishMessage)) return false;
+        PublishMessage that = (PublishMessage) o;
+        return getQos() == that.getQos() &&
+               getTopicName().equals(that.getTopicName()) &&
+               getPayload().equals(that.getPayload());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(qos, topicName);
+        return Objects.hash(getQos(), getTopicName(), getPayload());
     }
 
     @Override
     public String toString() {
-        return String.format("Subscription{QoS=%d, topicName=\"%s\"}", qos, topicName);
+        return String.format("PublishMessage{qos=%d, topicName='%s', payload='%s'", qos, topicName, payload.encodePrettily());
     }
 }
